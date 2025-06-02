@@ -9,7 +9,7 @@ export default function NewsPage() {
 
   useEffect(() => {
     async function fetchNews() {
-      const res = await fetch("http://localhost:8000/news"); // thay bằng URL thực tế
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API}/news`);
       const data = await res.json();
       setArticles(data);
     }

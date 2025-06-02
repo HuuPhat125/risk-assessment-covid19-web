@@ -360,7 +360,7 @@ export default function PredictionPage() {
       
       console.log("Sending batch data to API:", batchRequestBody);
 
-      const response = await fetch("https://ovn5eqgcii.execute-api.ap-southeast-1.amazonaws.com/prod/predict", {
+      const response = await fetch(process.env.NEXT_PUBLIC_PREDICT_API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(batchRequestBody),
@@ -435,7 +435,7 @@ export default function PredictionPage() {
       console.log("Sending data to API:", modelInput);
 
       // API call to your Python model endpoint
-      const response = await fetch("https://ovn5eqgcii.execute-api.ap-southeast-1.amazonaws.com/prod/predict", {
+      const response = await fetch(process.env.NEXT_PUBLIC_PREDICT_API, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

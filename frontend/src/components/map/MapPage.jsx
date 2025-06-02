@@ -34,7 +34,7 @@ export default function MapPage() {
     setLoading(true);
     setError(null);
 
-    fetch("http://127.0.0.1:8000/hospitals/hospitals_all")
+    fetch(`${process.env.NEXT_PUBLIC_BACKEND_API}/hospitals/hospitals_all`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         return res.json();
@@ -89,7 +89,7 @@ export default function MapPage() {
     }
 
     const [lat, lon] = userPosition;
-    fetch(`http://127.0.0.1:8000/hospitals/nearest?lat=${lat}&lon=${lon}`)
+    fetch(`${process.env.NEXT_PUBLIC_BACKEND_API}/hospitals/nearest?lat=${lat}&lon=${lon}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         return res.json();
