@@ -9,12 +9,8 @@ print("PORT env var:", os.getenv("PORT"))
 app = FastAPI()
 
 # Cấu hình CORS cho phép frontend trên localhost:3000 truy cập
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000"
-]
+origins = ["*"]
+
 
 app.add_middleware(
     CORSMiddleware,
