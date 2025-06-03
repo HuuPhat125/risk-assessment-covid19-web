@@ -8,7 +8,7 @@ import os
 import json
 
 class RSSReader:
-    def __init__(self, keywords=None, cache_file='data/rss_cache.json'):
+    def __init__(self, keywords=None, cache_file=None):
         self.keywords = [kw.lower() for kw in keywords] if keywords else []
         self.feeds = {
             'vnexpress': 'https://vnexpress.net/rss/suc-khoe.rss',
@@ -16,7 +16,21 @@ class RSSReader:
             'suckhoedoisong': 'https://suckhoedoisong.vn/y-te.rss',
             'sggp': 'https://www.sggp.org.vn/rss/ytesuckhoe-212.rss',
         }
-        self.cache_file = cache_file
+
+        # Xác định cache_file theo biến môi trường hoặc fallback
+        default_cache = 'data/rss_cache.json'
+        tmp_cache = '/tmp/rss_cache.json'
+
+        self.cache_file = cache_file or os.environ.get("RSS_CACHE_FILE", default_cache)
+
+        # Nếu không thể ghi vào cache_file mặc định, chuyển sang /tmp/
+        try:
+            os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
+            with open(self.cache_file, 'a'): pass  # thử tạo file nếu chưa có
+        except Exception as e:
+            print(f"[WARN] Cannot write to {self.cache_file}, using {tmp_cache}")
+            self.cache_file = tmp_cache
+
         self.cache = self._load_cache()
         self.last_fetched = None
 
@@ -26,20 +40,22 @@ class RSSReader:
                 with open(self.cache_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
             except Exception as e:
-                print(f"Error loading cache: {e}")
+                print(f"[ERROR] Failed to load cache: {e}")
         return []
 
     def _save_cache(self):
         cache_to_save = []
         for item in self.cache:
             copy_item = item.copy()
-            # Chuyển datetime về chuỗi isoformat để json có thể lưu
             if isinstance(copy_item.get('published_dt'), datetime):
                 copy_item['published_dt'] = copy_item['published_dt'].isoformat()
             cache_to_save.append(copy_item)
 
-        with open(self.cache_file, 'w', encoding='utf-8') as f:
-            json.dump(cache_to_save, f, ensure_ascii=False, indent=2)
+        try:
+            with open(self.cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cache_to_save, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[ERROR] Failed to save cache to {self.cache_file}: {e}")
 
     def clean_html(self, html_content):
         soup = BeautifulSoup(html_content, 'html.parser')
@@ -61,7 +77,7 @@ class RSSReader:
             soup = BeautifulSoup(res.text, 'xml')
             items = soup.find_all('item')
         except Exception as e:
-            print(f"Error fetching {source}: {e}")
+            print(f"[ERROR] Fetching {source} failed: {e}")
             return []
 
         results = []
@@ -96,7 +112,7 @@ class RSSReader:
             response.encoding = 'utf-8'
             feed = feedparser.parse(response.text)
         except Exception as e:
-            print(f"Error fetching {source}: {e}")
+            print(f"[ERROR] Fetching {source} failed: {e}")
             return []
 
         results = []
@@ -134,25 +150,22 @@ class RSSReader:
         all_results = []
 
         for source, url in self.feeds.items():
-            if source == 'suckhoedoisong':
-                results = self._fetch_custom_rss(url, source)
-            else:
-                results = self._fetch_standard_rss(url, source)
-
+            results = (
+                self._fetch_custom_rss(url, source)
+                if source == 'suckhoedoisong'
+                else self._fetch_standard_rss(url, source)
+            )
             all_results.extend(results)
 
         existing_links = {item['link'] for item in self.cache}
         new_items = [item for item in all_results if item['link'] not in existing_links]
 
-        # Chuẩn hoá cache cũ để đảm bảo có trường `published_dt`
         for item in self.cache:
             if 'published_dt' not in item:
                 item['published_dt'] = self._parse_date(item.get('published', '')) or datetime.min
 
-        # Gộp và sắp xếp lại
         self.cache.extend(new_items)
         self.cache.sort(key=lambda x: x['published_dt'], reverse=True)
-
         self._save_cache()
         self.last_fetched = datetime.utcnow()
 
