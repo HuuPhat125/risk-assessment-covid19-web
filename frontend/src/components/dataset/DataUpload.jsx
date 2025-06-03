@@ -21,17 +21,33 @@ export default function DataUpload() {
     setUploading(true);
     setUploadStatus(null);
 
-    // Simulate upload process
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_API}/api/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Upload failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+
       setUploadStatus({
         type: "success",
-        message: "File uploaded successfully! Data will be processed for training.",
+        message: `File uploaded successfully!`,
       });
+      setFile(null);
     } catch (error) {
       setUploadStatus({
         type: "error",
-        message: "Failed to upload file. Please try again.",
+        message: error.message || "Failed to upload file. Please try again.",
       });
     } finally {
       setUploading(false);
@@ -246,9 +262,7 @@ export default function DataUpload() {
                 />
               </svg>
             </div>
-            <p className="ml-3 text-sm text-gray-600">
-              Maximum file size: 10MB
-            </p>
+            <p className="ml-3 text-sm text-gray-600">Maximum file size: 10MB</p>
           </div>
         </div>
       </div>
