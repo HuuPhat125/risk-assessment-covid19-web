@@ -230,10 +230,9 @@ const formFields = [
 ];
 
 export default function PredictionPage() {
-
   const initialFormData = {};
-  formFields.forEach(section => {
-    section.fields.forEach(field => {
+  formFields.forEach((section) => {
+    section.fields.forEach((field) => {
       initialFormData[field.name] = field.defaultValue ?? "";
     });
   });
@@ -262,9 +261,10 @@ export default function PredictionPage() {
     const requiredFields = Object.keys(formData);
     for (let field of requiredFields) {
       if (!formData[field]) {
-        const fieldLabel = formFields
-          .flatMap(section => section.fields)
-          .find(f => f.name === field)?.label || field;
+        const fieldLabel =
+          formFields
+            .flatMap((section) => section.fields)
+            .find((f) => f.name === field)?.label || field;
         setError(`Please fill in the required field: ${fieldLabel}`);
         return false;
       }
@@ -273,18 +273,18 @@ export default function PredictionPage() {
   };
 
   const parseCSV = (text) => {
-    const lines = text.split('\n');
-    const headers = lines[0].split(',').map(h => h.trim());
+    const lines = text.split("\n");
+    const headers = lines[0].split(",").map((h) => h.trim());
     const data = [];
-    
+
     for (let i = 1; i < lines.length; i++) {
       if (lines[i].trim()) {
-        const values = lines[i].split(',');
+        const values = lines[i].split(",");
         const row = {};
         headers.forEach((header, index) => {
-          row[header] = values[index]?.trim() || '';
+          row[header] = values[index]?.trim() || "";
         });
-        if (Object.values(row).some(v => v !== '')) {
+        if (Object.values(row).some((v) => v !== "")) {
           data.push(row);
         }
       }
@@ -292,20 +292,31 @@ export default function PredictionPage() {
     return data;
   };
 
+  const resetForm = () => {
+    setFormData(initialFormData);
+    setPrediction(null);
+    setError("");
+    setSelectedModel("logistic_regression");
+  };
+
   const convertToCSV = (data) => {
-    if (data.length === 0) return '';
+    if (data.length === 0) return "";
     const headers = Object.keys(data[0]);
     const csvContent = [
-      headers.join(','),
-      ...data.map(row => headers.map(header => row[header] || '').join(','))
-    ].join('\n');
+      headers.join(","),
+      ...data.map((row) => headers.map((header) => row[header] || "").join(",")),
+    ].join("\n");
     return csvContent;
   };
 
+  const hasValidProbability = (confidence) => {
+    return confidence !== null && confidence !== undefined && !isNaN(confidence);
+  };
+
   const handleBatchFile = async (e) => {
-    setBatchError("");
+    setBatchError('');
     setBatchResults([]);
-    setDownloadUrl("");
+    setDownloadUrl('');
     const file = e.target.files[0];
     if (!file) return;
 
@@ -314,25 +325,24 @@ export default function PredictionPage() {
     try {
       let records = [];
       const text = await file.text();
-      if (file.name.endsWith(".json")) {
+      if (file.name.endsWith('.json')) {
         const json = JSON.parse(text);
         if (Array.isArray(json)) records = json;
-        else if (typeof json === "object") records = [json];
-      } else if (file.name.endsWith(".csv")) {
+        else if (typeof json === 'object') records = [json];
+      } else if (file.name.endsWith('.csv')) {
         records = parseCSV(text);
       } else {
-        setBatchError("Only CSV or JSON files are supported.");
+        setBatchError('Only CSV or JSON files are supported.');
         setBatchLoading(false);
         return;
       }
 
       if (records.length === 0) {
-        setBatchError("No valid records found in file.");
+        setBatchError('No valid records found in file.');
         setBatchLoading(false);
         return;
       }
 
-      // Prepare batch data with model config
       const inputs = records.map((rec) => ({
         USMER: parseInt(rec.USMER),
         SEX: parseInt(rec.SEX),
@@ -351,21 +361,18 @@ export default function PredictionPage() {
         TOBACCO: parseInt(rec.TOBACCO),
         CLASIFFICATION_FINAL: parseInt(rec.CLASIFFICATION_FINAL),
       }));
-      
-      // Add model config to the batch request
+
       const batchRequestBody = {
         data: inputs,
-        model_config: selectedModel
+        model_config: selectedModel,
       };
-      
-      console.log("Sending batch data to API:", batchRequestBody);
 
       const response = await fetch(process.env.NEXT_PUBLIC_PREDICT_API, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(batchRequestBody),
       });
-
+      
       const responseText = await response.text();
       if (!response.ok) throw new Error(`API Error: ${response.status} - ${responseText}`);
 
@@ -376,28 +383,33 @@ export default function PredictionPage() {
         throw new Error(`Failed to parse API response: ${responseText}`);
       }
 
-      // result: { predictions: [...], probabilities: [...] }
-      const results = (result.predictions || []).map((risk, idx) => ({
-        index: idx + 1,
-        risk_level: risk,
-        confidence: result.probabilities[idx],
-        input: records[idx],
-      }));
+      const results = (result.predictions || []).map((risk, idx) => {
+        const highProb = result.probabilities && Array.isArray(result.probabilities) && hasValidProbability(result.probabilities[idx])
+          ? result.probabilities[idx]
+          : null;
+        return {
+          index: idx + 1,
+          risk_level: risk || 'UNKNOWN',
+          high_probability: highProb,
+          low_probability: highProb !== null ? 1 - highProb : null,
+          input: records[idx],
+        };
+      });
 
-      setBatchResults(results.slice(0, 10)); // Display max 10 results
+      setBatchResults(results.slice(0, 10));
 
-      // Prepare download file
-      const output = results.map(r => ({
+      const output = results.map((r) => ({
         ...r.input,
         risk_level: r.risk_level,
-        confidence: r.confidence,
+        high_probability: hasValidProbability(r.high_probability) ? r.high_probability : 'N/A',
+        low_probability: hasValidProbability(r.low_probability) ? r.low_probability : 'N/A',
         model_used: selectedModel,
       }));
       const csv = convertToCSV(output);
-      const blob = new Blob([csv], { type: "text/csv" });
+      const blob = new Blob([csv], { type: 'text/csv' });
       setDownloadUrl(URL.createObjectURL(blob));
     } catch (err) {
-      setBatchError("Batch prediction failed: " + err.message);
+      setBatchError('Batch prediction failed: ' + err.message);
     } finally {
       setBatchLoading(false);
     }
@@ -407,11 +419,10 @@ export default function PredictionPage() {
     if (!validateForm()) return;
 
     setLoading(true);
-    setError("");
+    setError('');
     setPrediction(null);
 
     try {
-      // Prepare data in the exact format expected by Python model
       const modelInput = {
         USMER: parseInt(formData.USMER),
         SEX: parseInt(formData.SEX),
@@ -432,25 +443,31 @@ export default function PredictionPage() {
         model_config: selectedModel,
       };
 
-      console.log("Sending data to API:", modelInput);
-
-      // API call to your Python model endpoint
       const response = await fetch(process.env.NEXT_PUBLIC_PREDICT_API, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(modelInput),
       });
+      // const response = {
+      //     ok: true,
+      //     status: 200,
+      //     json: async () => ({
+      //       predictions: ["LOW"],
+      //       probabilities: [0.3002267088826256],
+      //       model_config: "logistic_regression",
+      //       endpoint_name: "logistic-regression-endpoint"
+      //     }),
+      //     text: async () => JSON.stringify({
+      //       predictions: ["LOW"],
+      //       probabilities: null,
+      //       model_config: "logistic_regression",
+      //       endpoint_name: "logistic-regression-endpoint"
+      //     })
+      //   };
 
-      console.log("API Response status:", response.status);
-      
+
       const responseText = await response.text();
-      console.log("API Response text:", responseText);
-
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status} - ${responseText}`);
-      }
+      if (!response.ok) throw new Error(`API Error: ${response.status} - ${responseText}`);
 
       let result;
       try {
@@ -459,46 +476,37 @@ export default function PredictionPage() {
         throw new Error(`Failed to parse API response: ${responseText}`);
       }
 
-      console.log("Parsed API result:", result);
-      
-      // Process the response from Python model
+      const highProb = result.probabilities && Array.isArray(result.probabilities) && hasValidProbability(result.probabilities[0])
+        ? result.probabilities[0]
+        : null;
+
       const processedResult = {
-        risk_level: result.predictions[0], // "LOW" or "HIGH"
-        confidence: result.probabilities[0], // Highest probability
-        low_risk_probability: result.probabilities[0][0],
-        high_risk_probability: result.probabilities[0][1],
+        risk_level: result.predictions && result.predictions[0] ? result.predictions[0] : 'UNKNOWN',
+        high_probability: highProb,
+        low_probability: highProb !== null ? 1 - highProb : null,
         model_used: selectedModel,
-        raw_response: result // Store raw response for debugging
+        raw_response: result,
       };
 
       setPrediction(processedResult);
     } catch (err) {
-      console.error("Prediction error:", err);
+      console.error('Prediction error:', err);
       setError(`Failed to get prediction: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const resetForm = () => {
-    setFormData(initialFormData);
-    setPrediction(null);
-    setError("");
-    setSelectedModel("logistic_regression");
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Form Section */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-6">
                 COVID-19 Risk Assessment
               </h2>
 
-              {/* Model Selection */}
               <div className="mb-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <h3 className="text-lg font-semibold text-blue-900 mb-3">
                   Machine Learning Model Selection
@@ -519,13 +527,17 @@ export default function PredictionPage() {
                     ))}
                   </select>
                   <p className="text-xs text-blue-700 mt-1">
-                    Selected: <span className="font-semibold">{modelOptions.find(m => m.value === selectedModel)?.label}</span>
+                    Selected: <span className="font-semibold">
+                      {modelOptions.find((m) => m.value === selectedModel)?.label}
+                    </span>
                   </p>
                 </div>
               </div>
 
               <div className="mb-8">
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">Batch Prediction (CSV/JSON)</h3>
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">
+                  Batch Prediction (CSV/JSON)
+                </h3>
                 <input
                   type="file"
                   accept=".csv,.json"
@@ -534,11 +546,14 @@ export default function PredictionPage() {
                   disabled={batchLoading}
                 />
                 <p className="text-xs text-gray-600 mb-2">
-                  Using model: <span className="font-semibold">{modelOptions.find(m => m.value === selectedModel)?.label}</span>
+                  Using model: <span className="font-semibold">
+                    {modelOptions.find((m) => m.value === selectedModel)?.label}
+                  </span>
                 </p>
                 {batchLoading && (
                   <div className="text-blue-600 flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Processing batch with {modelOptions.find(m => m.value === selectedModel)?.label}...
+                    <Loader2 className="w-4 h-4 animate-spin" /> Processing batch with{' '}
+                    {modelOptions.find((m) => m.value === selectedModel)?.label}...
                   </div>
                 )}
                 {batchError && (
@@ -546,21 +561,39 @@ export default function PredictionPage() {
                 )}
                 {batchResults.length > 0 && (
                   <div className="mt-4">
-                    <div className="mb-2 font-medium">Top 10 Results (Model: {modelOptions.find(m => m.value === selectedModel)?.label}):</div>
+                    <div className="mb-2 font-medium">
+                      Top 10 Results (Model: {modelOptions.find((m) => m.value === selectedModel)?.label}):
+                    </div>
                     <table className="min-w-full text-xs border">
                       <thead>
                         <tr className="bg-gray-100">
                           <th className="border px-2 py-1">#</th>
                           <th className="border px-2 py-1">Risk Level</th>
-                          <th className="border px-2 py-1">Confidence</th>
+                          <th className="border px-2 py-1">HIGH Prob</th>
+                          <th className="border px-2 py-1">LOW Prob</th>
                         </tr>
                       </thead>
                       <tbody>
                         {batchResults.map((r, idx) => (
                           <tr key={idx}>
                             <td className="border px-2 py-1">{r.index}</td>
-                            <td className={`border px-2 py-1 font-bold ${r.risk_level === "HIGH" ? "text-red-600" : "text-green-600"}`}>{r.risk_level}</td>
-                            <td className="border px-2 py-1">{(Array.isArray(r.confidence) ? Math.max(...r.confidence) : r.confidence * 100).toFixed(1)}%</td>
+                            <td
+                              className={`border px-2 py-1 font-bold ${
+                                r.risk_level === 'HIGH' ? 'text-red-600' : 'text-green-600'
+                              }`}
+                            >
+                              {r.risk_level}
+                            </td>
+                            <td className="border px-2 py-1">
+                              {hasValidProbability(r.high_probability)
+                                ? `${(r.high_probability * 100).toFixed(1)}%`
+                                : 'N/A'}
+                            </td>
+                            <td className="border px-2 py-1">
+                              {hasValidProbability(r.low_probability)
+                                ? `${(r.low_probability * 100).toFixed(1)}%`
+                                : 'N/A'}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -584,23 +617,17 @@ export default function PredictionPage() {
                     <h3 className="text-lg font-medium text-gray-800 border-b border-gray-200 pb-2">
                       {section.section}
                     </h3>
-
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {section.fields.map((field) => (
                         <div key={field.name} className="space-y-2">
                           <label className="block text-sm font-medium text-gray-700">
                             {field.label}
-                            {field.required && (
-                              <span className="text-red-500 ml-1">*</span>
-                            )}
+                            {field.required && <span className="text-red-500 ml-1">*</span>}
                           </label>
-
-                          {field.type === "select" ? (
+                          {field.type === 'select' ? (
                             <select
                               value={formData[field.name]}
-                              onChange={(e) =>
-                                handleInputChange(field.name, e.target.value)
-                              }
+                              onChange={(e) => handleInputChange(field.name, e.target.value)}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               required={field.required}
                             >
@@ -615,9 +642,7 @@ export default function PredictionPage() {
                             <input
                               type={field.type}
                               value={formData[field.name]}
-                              onChange={(e) =>
-                                handleInputChange(field.name, e.target.value)
-                              }
+                              onChange={(e) => handleInputChange(field.name, e.target.value)}
                               min={field.min}
                               max={field.max}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -649,7 +674,8 @@ export default function PredictionPage() {
                     {loading ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        Analyzing with {modelOptions.find(m => m.value === selectedModel)?.label}...
+                        Analyzing with{' '}
+                        {modelOptions.find((m) => m.value === selectedModel)?.label}...
                       </>
                     ) : (
                       <>
@@ -658,7 +684,6 @@ export default function PredictionPage() {
                       </>
                     )}
                   </button>
-
                   <button
                     type="button"
                     onClick={resetForm}
@@ -671,9 +696,7 @@ export default function PredictionPage() {
             </div>
           </div>
 
-          {/* Results Section */}
           <div className="space-y-6">
-            {/* Dataset Info */}
             <div className="bg-blue-50 rounded-lg border border-blue-200 p-6">
               <h3 className="text-lg font-semibold text-blue-900 mb-3">
                 About This Model
@@ -687,70 +710,95 @@ export default function PredictionPage() {
               </div>
               <div className="mt-3 pt-3 border-t border-blue-200">
                 <p className="text-sm font-medium text-blue-900">Current Model:</p>
-                <p className="text-sm text-blue-700">{modelOptions.find(m => m.value === selectedModel)?.label}</p>
+                <p className="text-sm text-blue-700">
+                  {modelOptions.find((m) => m.value === selectedModel)?.label}
+                </p>
               </div>
             </div>
 
-            {/* Loading State */}
             {loading && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
                 <div className="flex items-center gap-3">
                   <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
                   <div>
-                    <h3 className="text-lg font-semibold text-blue-900">
-                      Processing...
-                    </h3>
+                    <h3 className="text-lg font-semibold text-blue-900">Processing...</h3>
                     <p className="text-sm text-blue-700">
-                      Analyzing with {modelOptions.find(m => m.value === selectedModel)?.label}
+                      Analyzing with{' '}
+                      {modelOptions.find((m) => m.value === selectedModel)?.label}
                     </p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Prediction Results */}
             {prediction && (
               <div
                 className={`rounded-lg border p-6 ${
-                  prediction.risk_level === "HIGH"
-                    ? "bg-red-50 border-red-200"
-                    : "bg-green-50 border-green-200"
+                  prediction.risk_level === 'HIGH'
+                    ? 'bg-red-50 border-red-200'
+                    : prediction.risk_level === 'LOW'
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-gray-50 border-gray-200'
                 }`}
               >
                 <div className="flex items-center gap-3 mb-4">
-                  {prediction.risk_level === "HIGH" ? (
+                  {prediction.risk_level === 'HIGH' ? (
                     <AlertTriangle className="w-8 h-8 text-red-500" />
-                  ) : (
+                  ) : prediction.risk_level === 'LOW' ? (
                     <CheckCircle className="w-8 h-8 text-green-500" />
+                  ) : (
+                    <AlertTriangle className="w-8 h-8 text-gray-500" />
                   )}
                   <div>
                     <h3
                       className={`text-xl font-bold ${
-                        prediction.risk_level === "HIGH"
-                          ? "text-red-900"
-                          : "text-green-900"
+                        prediction.risk_level === 'HIGH'
+                          ? 'text-red-900'
+                          : prediction.risk_level === 'LOW'
+                          ? 'text-green-900'
+                          : 'text-gray-900'
                       }`}
                     >
                       {prediction.risk_level} RISK
                     </h3>
+                    {hasValidProbability(prediction.high_probability) && (
+                      <p
+                        className={`text-sm ${
+                          prediction.risk_level === 'HIGH'
+                            ? 'text-red-700'
+                            : 'text-green-700'
+                        }`}
+                      >
+                        HIGH Probability: {(prediction.high_probability * 100).toFixed(1)}%
+                      </p>
+                    )}
+                    {hasValidProbability(prediction.low_probability) && (
+                      <p
+                        className={`text-sm ${
+                          prediction.risk_level === 'HIGH'
+                            ? 'text-red-700'
+                            : 'text-green-700'
+                        }`}
+                      >
+                        LOW Probability: {(prediction.low_probability * 100).toFixed(1)}%
+                      </p>
+                    )}
                     <p
-                      className={`text-sm ${
-                        prediction.risk_level === "HIGH" ? "text-red-700" : "text-green-700"
+                      className={`text-xs ${
+                        prediction.risk_level === 'HIGH'
+                          ? 'text-red-600'
+                          : prediction.risk_level === 'LOW'
+                          ? 'text-green-600'
+                          : 'text-gray-600'
                       }`}
                     >
-                      Model Probability: {(prediction.confidence * 100).toFixed(1)}%
-                    </p>
-                    <p className={`text-xs ${
-                        prediction.risk_level === "HIGH" ? "text-red-600" : "text-green-600"
-                      }`}>
-                      Using: {modelOptions.find(m => m.value === prediction.model_used)?.label}
+                      Using: {modelOptions.find((m) => m.value === prediction.model_used)?.label}
                     </p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Disclaimer */}
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
@@ -758,8 +806,7 @@ export default function PredictionPage() {
                   <p className="font-medium mb-1">Medical Disclaimer</p>
                   <p>
                     This tool is for informational purposes only and should not
-                    replace professional medical advice, diagnosis, or
-                    treatment.
+                    replace professional medical advice, diagnosis, or treatment.
                   </p>
                 </div>
               </div>
@@ -769,4 +816,4 @@ export default function PredictionPage() {
       </div>
     </div>
   );
-}
+};

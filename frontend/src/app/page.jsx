@@ -17,9 +17,9 @@ export default function Home() {
       </section>
 
       {/* Explore Data Section */}
-      <section className="max-w-7xl mx-auto px-4 py-8">
+      {/* <section className="max-w-7xl mx-auto px-4 py-8">
         <ExploreDataSection />
-      </section>
+      </section> */}
 
       {/* Trust Section - Full width background với content centered */}
       <section className="w-full bg-slate-100">

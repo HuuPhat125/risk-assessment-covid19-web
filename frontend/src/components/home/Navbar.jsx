@@ -11,9 +11,9 @@ export default function Navbar() {
 
   const navLinks = [
     { href: "/", label: "Home" },
-    { href: "/dataset", label: "Dataset" },
+    // { href: "/dataset", label: "Dataset" },
     { href: "/prediction", label: "Prediction" },
-    { href: "/map", label: "Map" },
+    // { href: "/map", label: "Map" },
     { href: "/news", label: "News" },
   ];
 
